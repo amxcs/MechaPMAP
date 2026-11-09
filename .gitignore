@@ -1,0 +1,8 @@
+*.o
+*.elf
+src/*_irx.c
+src/font_*.c
+src/pwr70k_rgb.c
+iop/obj/
+iop/irx/
+mechacon/out/
