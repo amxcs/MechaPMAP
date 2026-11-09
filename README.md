@@ -1,6 +1,6 @@
 # MechaPMAP
 
-PS2 homebrew that runs Sony's PMAP servo/laser calibration on the console through the MechaCon:
+PS2 homebrew that calibrates the disc drive through the MechaCon's own servo adjustment commands:
 measure CD / DVD-SL / DVD-DL, edit the servo values, check the laser, and write the EEPROM.
 It backs up the NVRAM to USB first and verifies every write.
 
@@ -14,4 +14,4 @@ It backs up the NVRAM to USB first and verifies every write.
 
 Run `MechaPMAP.elf` from a USB stick and keep the backup it writes there.
 
-Based on [MechaPwn](https://github.com/MechaResearch/MechaPwn). GPL-3.0. Use at your own risk.
+Named after SP193's PMAP. Based on [MechaPwn](https://github.com/MechaResearch/MechaPwn). GPL-3.0. Use at your own risk.
