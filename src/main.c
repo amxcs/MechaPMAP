@@ -160,8 +160,8 @@ int main(void){
 
  {const u32 AR=PAD_UP|PAD_DOWN|PAD_LEFT|PAD_RIGHT;u32 held=0;unsigned t0=0,next=0;
   for(;;){u32 p=ReadCombinedPadStatus(),h=(u32)ReadCombinedPadStatus_raw()&AR;unsigned now=ms();
-   if(p&AR){held=p&AR;t0=now;next=now+400;pad_step=1;}
-   else if(held&&(h&held)==held){if((int)(now-next)>=0){p|=held;pad_step=now-t0>2000?10:1;next=now+(now-t0>2000?40:70);}}
+   if(p&AR){held=p&AR;t0=now;next=now+200;pad_step=1;}
+   else if(held&&(h&held)==held){if((int)(now-next)>=0){p|=held;pad_step=now-t0>1000?10:1;next=now+(now-t0>1000?20:35);}}
    else{held=0;pad_step=1;}
    if(p&&handle(p))draw(),present();else gsKit_vsync_wait();}}
  return 0;}

@@ -38,10 +38,11 @@ static int statusf(const Field *f,int v,char *msg,int n){int i,lo=f->now,hi=f->n
 static u32 stc(int s){return s==2?C_CRIT:C_WARN;}
 
 static int runs_count;
+static void run_push(Field *f,int v){if(f->nruns==16){memmove(f->runs,f->runs+1,15*sizeof f->runs[0]);f->nruns=15;}f->runs[f->nruns++]=v;}
 static void runs_add(const char *kind,const unsigned char *img){runs_count++;int i;char line[512];int n;
  n=snprintf(line,sizeof line,"%s",kind);
  for(i=0;i<NF;i++){Field *f=&F[i];if(kind_word(kind,f->word)&&f->word!=0x30){int v=fget(f,img);
-   if(f->nruns<16&&f->part!='M')f->runs[f->nruns++]=v;n+=snprintf(line+n,sizeof line-n,",%d",v);}else n+=snprintf(line+n,sizeof line-n,",-");}
+   if(f->part!='M')run_push(f,v);n+=snprintf(line+n,sizeof line-n,",%d",v);}else n+=snprintf(line+n,sizeof line-n,",-");}
  n+=snprintf(line+n,sizeof line-n,"\n");
  {char p[96];int fd;snprintf(p,sizeof p,"%s%s",device,csvname);fd=open(p,O_WRONLY|O_CREAT|O_APPEND,0666);
   if(fd>=0){if(write(fd,line,n)!=n)report("CSV_WRITE_SHORT\n");close(fd);}else report("CSV_OPEN_FAIL\n");}
@@ -49,16 +50,19 @@ static void runs_add(const char *kind,const unsigned char *img){runs_count++;int
 
 static void runs_add_thr(int v33,int v34){char line[256];int n,i,fd;char p[96];runs_count++;
  n=snprintf(line,sizeof line,"CD,%d,%d",v33,v34);for(i=2;i<NF;i++)n+=snprintf(line+n,sizeof line-n,",-");n+=snprintf(line+n,sizeof line-n,"\n");
- if(F[1].nruns<16)F[1].runs[F[1].nruns++]=v34;
+ run_push(&F[1],v34);
  snprintf(p,sizeof p,"%s%s",device,csvname);fd=open(p,O_WRONLY|O_CREAT|O_APPEND,0666);
  if(fd>=0){if(write(fd,line,n)!=n)report("CSV_WRITE_SHORT\n");close(fd);}else report("CSV_OPEN_FAIL\n");
  report("RUN_THRESHOLDS_ONLY %s",line);}
-static void runs_load(void){static char buf[16384];int n=read_file(csvname,buf,sizeof buf-1),i;char *line,*save=NULL;
- runs_count=0;if(n<=0)return;buf[n]=0;
- for(line=strtok_r(buf,"\n",&save);line;line=strtok_r(NULL,"\n",&save)){char *tok,*s2=NULL;int col=0;
+static void runs_load(void){static char buf[16384];int n=-1,i,fd;long sz;char *line,*save=NULL,*start=buf,p[96];
+ runs_count=0;snprintf(p,sizeof p,"%s%s",device,csvname);fd=open(p,O_RDONLY);if(fd<0)return;
+ sz=lseek(fd,0,SEEK_END);if(sz>(long)sizeof buf-1){lseek(fd,sz-(long)(sizeof buf-1),SEEK_SET);n=read(fd,buf,sizeof buf-1);}else if(sz>0){lseek(fd,0,SEEK_SET);n=read(fd,buf,sizeof buf-1);}close(fd);
+ if(n<=0)return;buf[n]=0;
+ if(sz>(long)sizeof buf-1){char *nl=strchr(buf,'\n');if(!nl)return;start=nl+1;report("RUNS_LOAD tail only: csv=%ld bytes\n",sz);}
+ for(line=strtok_r(start,"\n",&save);line;line=strtok_r(NULL,"\n",&save)){char *tok,*s2=NULL;int col=0;
   for(tok=strtok_r(line,",",&s2);tok;tok=strtok_r(NULL,",",&s2),col++){
    if(col==0)continue;i=col-1;if(i>=NF)break;
-   if((tok[0]!='-'||tok[1])&&F[i].part!='M'){int v=atoi(tok);if(F[i].word==0x49&&v>255)v-=512;if(F[i].nruns<16)F[i].runs[F[i].nruns++]=v;}}
+   if((tok[0]!='-'||tok[1])&&F[i].part!='M'){int v=atoi(tok);if(F[i].word==0x49&&v>255)v-=512;run_push(&F[i],v);}}
   runs_count++;}}
 
 static void vlabel(int x,int ytop,int ybot,u32 c,const char *s){

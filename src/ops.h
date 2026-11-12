@@ -52,7 +52,7 @@ static int op_unlock(const char *what){int ok;
  if(!memcmp(now,pre,1024)){fail_("Unlock failed. NVRAM verified unchanged.",1);return 0;}
  fail_("Unlock NOT verified. Keep the USB files; do not restart yet.",0);return 0;}
 
-static int known_blob(const unsigned char *blob){unsigned i;if(!memcmp(blob,P->factory,224)||!memcmp(blob,P->hook,224)||!memcmp(blob,P->fuv2,224))return 1;if(P!=&PROFILES[0])return 0;for(i=0;i<sizeof choice_patches/sizeof choice_patches[0];i++)if(!memcmp(blob,choice_patches[i].blob,224))return 1;return 0;}
+static int known_blob(const unsigned char *blob){unsigned i;if(!memcmp(blob,P->factory,224)||!memcmp(blob,P->hook,224)||!memcmp(blob,P->fuv2,224)||!memcmp(blob,P->unlock,224))return 1;if(P!=&PROFILES[0])return 0;for(i=0;i<sizeof choice_patches/sizeof choice_patches[0];i++)if(!memcmp(blob,choice_patches[i].blob,224))return 1;return 0;}
 static int op_patch(const unsigned char *blob,const char *name,const char *what){int i,ok=1;uint16_t w;
  if(!known_blob(blob)){fail_("The patch to write is not a known container. Nothing written.",1);return 0;}
  task_begin("WRITING","Writing patch…",name,"words 400..511");
@@ -75,10 +75,10 @@ static int op_patch(const unsigned char *blob,const char *name,const char *what)
  ok=stable_image(now)&&!memcmp(now,pre,1024);
  fail_(ok?"Write failed. Previous patch restored and verified.":"Write failed; restoration NOT verified. Keep the USB files; do not restart yet.",ok);return 0;}
 
-static int ram_matches(const unsigned char *img){unsigned i,v,bad=0,nw=P->last30-0x30+1,nb=(2+2*nw+3)&~3u;unsigned char ram[0x60];
+static int ram_matches(const unsigned char *img){unsigned i,v,bad=0,nw=P->last30-0x30+1,base=(P->ee30-2)&~3u,off=(P->ee30-2)-base,nb=(off+2+2*nw+3)&~3u;unsigned char ram[0x60];
  if(nb>sizeof ram)return 0;
- for(i=0;i<nb;i+=4){if(!ramword(P->ee30-2+i,&v)){report("RAMCOPY read fail\n");return 0;}ram[i]=(unsigned char)v;ram[i+1]=(unsigned char)(v>>8);ram[i+2]=(unsigned char)(v>>16);ram[i+3]=(unsigned char)(v>>24);}
- for(i=0;i<nw;i++){unsigned r=ram[2+2*i]|(ram[3+2*i]<<8);if(r!=p142_word(img,0x30+i)){if(bad<6)report("RAMCOPY word %03x ram=%04x eeprom=%04x\n",0x30+i,r,p142_word(img,0x30+i));bad++;}}
+ for(i=0;i<nb;i+=4){if(!ramword(base+i,&v)){report("RAMCOPY read fail\n");return 0;}ram[i]=(unsigned char)v;ram[i+1]=(unsigned char)(v>>8);ram[i+2]=(unsigned char)(v>>16);ram[i+3]=(unsigned char)(v>>24);}
+ for(i=0;i<nw;i++){unsigned r=ram[off+2+2*i]|(ram[off+3+2*i]<<8);if(r!=p142_word(img,0x30+i)){if(bad<6)report("RAMCOPY word %03x ram=%04x eeprom=%04x\n",0x30+i,r,p142_word(img,0x30+i));bad++;}}
  report("RAMCOPY 0x30..0x%02x differing=%u\n",P->last30,bad);flush();return bad==0;}
 static int op_apply(void){
  task_begin("TEST DISC","Applying values…",NULL,NULL);
@@ -216,8 +216,8 @@ static void live_tune(void){int i,v;const u32 AR=PAD_UP|PAD_DOWN|PAD_LEFT|PAD_RI
  if(sceCdSeek(2000)){unsigned s0=ms();while(ms()-s0<10000&&sceCdSync(1))pause_ms(5);}
  scr=S_TUNE;draw();present();
  for(;;){u32 p=ReadCombinedPadStatus(),h=(u32)ReadCombinedPadStatus_raw()&AR;unsigned now=ms();int step=1;
-  if(p&AR){held=p&AR;t0=now;next=now+400;}
-  else if(held&&(h&held)==held){if((int)(now-next)>=0){p|=held;if(now-t0>2000)step=4;next=now+(now-t0>2000?60:90);}}
+  if(p&AR){held=p&AR;t0=now;next=now+200;}
+  else if(held&&(h&held)==held){if((int)(now-next)>=0){p|=held;if(now-t0>1000)step=4;next=now+(now-t0>1000?30:45);}}
   else held=0;
   if(p&PAD_CIRCLE){tn_point();tn_restore();report("TUNE END n=%u resets=%d errs=%d\n",tn_n,tn_resets,tn_errs);flush();scr=S_LASER;return;}
   if(p&PAD_TRIANGLE){tn_point();for(i=0;i<TN_N;i++)if(tn_set[i])tn_ee[i]=tn_val[i];tn_restore();tn_edit=1;
@@ -231,6 +231,7 @@ static void live_tune(void){int i,v;const u32 AR=PAD_UP|PAD_DOWN|PAD_LEFT|PAD_RI
   if(p){draw();present();}
   tn_measure();draw();present();}}
 static void laser_check(void){unsigned last=0;int done_for=-1;
+ tn_edit=0;
  ins_type=ins_ready=ins_lid=-1;lc_n=0;scr=S_LASER;draw();present();report("LASER BEGIN\n");flush();
  for(;;){u32 p=ReadCombinedPadStatus();
   if(p&PAD_CIRCLE){report("LASER END n=%d\n",lc_n);flush();return;}

@@ -42,7 +42,7 @@ static void draw(void){
   row(-1,"3","Calibrate","PMAP ELECT on CD, DVD-SL and DVD-DL",done>2?"OK":"pending",done>2?2:0);
   row(-1,"4","Finish","Remove the PMAP container or install Force Unlock v2","pending",0);
   Btn bt[3];int n=0;
-  if(patch_kind==P_UNLOCK&&pending[0])bt[n++]=(Btn){!strcmp(pending,"restore")?"Continue · restore NVRAM":"Continue · Finish",K_X,!strcmp(pending,"restore")?S_RESTORE_B:S_FINISH_B,0,strcmp(pending,"v2")&&!have_bak};
+  if(patch_kind==P_UNLOCK&&pending[0])bt[n++]=(Btn){!strcmp(pending,"restore")?"Continue · restore NVRAM":"Continue · Finish",K_X,!strcmp(pending,"restore")?S_RESTORE_B:S_FINISH_B,0,strncmp(pending,"v2",2)&&!have_bak};
   else if(patch_kind==P_UNLOCK)bt[n++]=(Btn){"Start Step 2 · Install PMAP",K_X,S_HOOK_CONFIRM,0,0};
   else if(patch_kind==P_PMAP){bt[n++]=(Btn){"Start Step 3 · Calibrate",K_X,S_CALIB_INTRO,0,0};bt[n++]=(Btn){"Skip to Step 4",K_SQ,S_FINISH,1,0};}
   else if(patch_kind!=P_UNKNOWN)bt[n++]=(Btn){"Start Step 1 · Unlock",K_X,S_UNLOCK_CONFIRM,0,0};
@@ -185,19 +185,20 @@ static void draw(void){
   row(-1,0,"Unlock",NULL,"OK",2);row(-1,0,"Install PMAP",NULL,"OK",2);row(-1,0,"Calibrate",NULL,"OK",2);row(-1,0,"Finish",NULL,"OK",2);
   for(int i=0;i<4;i++)act[i]=-1;break;}
  case S_ERROR:{char m[160];eyebrow("STOPPED");hero(G_WARN,1);title("Stopped");lede(failure);
-  snprintf(m,sizeof m,"Save %s and mechapmap_*.bin from the USB flash drive.",logname);note(err_back?0:2,m);
+  snprintf(m,sizeof m,"Save mechapmap_%03u*.log and mechapmap_*.bin from the USB flash drive.",logno);note(err_back?0:2,m);
   if(err_back){Btn b[]={{"Back to start",K_O,S_WELCOME,2,0}};buttons(b,1);}else{for(int i=0;i<4;i++)act[i]=-1;}break;}
  }
  padbar(NULL);}
 
+static int mid_from_bak;
 static void refresh(void){int i;
- if(stable_image(img0)){patch_kind=classify(img0);c97_k=p142_word(img0,0x37)&0x3f;for(i=0;i<NF;i++)F[i].now=F[i].val=fget(&F[i],img0);}}
+ if(stable_image(img0)){patch_kind=classify(img0);c97_k=p142_word(img0,0x37)&0x3f;for(i=0;i<NF;i++)F[i].now=F[i].val=fget(&F[i],img0);mid_from_bak=0;}}
 static void startup(void){char buf[24];int n;uint8_t ver[4]={0},date[5]={0};
  header();fill(0,SY+70,W,200,C_BG);text(f_body,18,SX,SY+90,C_MUTED,"Starting…");present();
  if(!start_stack()){char m[64];snprintf(m,sizeof m,"IOP startup failed at %s.",stack_fail);snprintf(failure,sizeof failure,"%s",m);err_back=0;scr=S_ERROR;draw();present();for(;;)gsKit_vsync_wait();}
  PadInitPads();MechaInit();
  if(!pick_usb()){snprintf(failure,sizeof failure,"No USB stick found (mass:/). Nothing written.");err_back=0;scr=S_ERROR;draw();present();for(;;)gsKit_vsync_wait();}
- report("MechaPMAP v1\n");flush();
+ report("MechaPMAP v1.1\n");flush();
  if(sceCdInit(SCECdINIT)<0||!verdate()||!getMechaVersion(ver)||!getMechaBuildDate(date)){fail_("This MechaCon is not supported (supported: 5.00, 5.02, 5.04, 5.06, 5.12, 6.00, 6.02, 6.04, 6.06, 6.10, 6.12). Nothing written.",0);return;}
  set_ranges();
  if(!ee_set_sums(P->sums)||ee_len30!=(P->last30-0x30)*2){fail_("Profile checksum table is inconsistent. Nothing written.",0);return;}
@@ -220,17 +221,17 @@ static void startup(void){char buf[24];int n;uint8_t ver[4]={0},date[5]={0};
  refresh();runs_load();report("RUNS %d\n",runs_count);flush();
  scr=S_WELCOME;draw();present();}
 
-static void derive_mid(void){int m;if(F[1].val==F[1].now&&F[2].val==F[2].now){F[0].val=F[0].now;F[3].val=F[3].now;return;}
+static void derive_mid(void){int m;if(mid_from_bak)return;if(F[1].val==F[1].now&&F[2].val==F[2].now){F[0].val=F[0].now;F[3].val=F[3].now;return;}
  m=c97_mid(F[1].val,F[2].val);F[0].val=clampf(&F[0],m);F[3].val=clampf(&F[3],m-1);}
 static int handle(u32 p){static const u32 keys[4]={PAD_CROSS,PAD_CIRCLE,PAD_TRIANGLE,PAD_SQUARE};int k,i;
  if(scr==S_ADV_EDIT){
   if(p&PAD_DOWN){sel=sel<NF-1?sel+1:sel;return 1;}if(p&PAD_UP){sel=sel?sel-1:0;return 1;}
   if(F[sel].part=='M'&&(p&(PAD_RIGHT|PAD_LEFT|PAD_SQUARE|PAD_R1)))return 1;
-  if(p&PAD_RIGHT){F[sel].val=clampf(&F[sel],F[sel].val+pad_step);derive_mid();return 1;}if(p&PAD_LEFT){F[sel].val=clampf(&F[sel],F[sel].val-pad_step);derive_mid();return 1;}
-  if(p&PAD_SQUARE){F[sel].val=avgf(&F[sel]);derive_mid();return 1;}
-  if(p&PAD_TRIANGLE){for(i=0;i<NF;i++)if(F[i].part!='M')F[i].val=avgf(&F[i]);derive_mid();return 1;}
-  if(have_bak&&(p&PAD_R1)){F[sel].val=fget(&F[sel],bak);derive_mid();return 1;}
-  if(have_bak&&(p&PAD_L1)){for(i=0;i<NF;i++)F[i].val=fget(&F[i],bak);return 1;}}
+  if(p&PAD_RIGHT){F[sel].val=clampf(&F[sel],F[sel].val+pad_step);mid_from_bak=0;derive_mid();return 1;}if(p&PAD_LEFT){F[sel].val=clampf(&F[sel],F[sel].val-pad_step);mid_from_bak=0;derive_mid();return 1;}
+  if(p&PAD_SQUARE){F[sel].val=avgf(&F[sel]);mid_from_bak=0;derive_mid();return 1;}
+  if(p&PAD_TRIANGLE){for(i=0;i<NF;i++)if(F[i].part!='M')F[i].val=avgf(&F[i]);mid_from_bak=0;derive_mid();return 1;}
+  if(have_bak&&(p&PAD_R1)){F[sel].val=fget(&F[sel],bak);mid_from_bak=0;derive_mid();return 1;}
+  if(have_bak&&(p&PAD_L1)){for(i=0;i<NF;i++)F[i].val=fget(&F[i],bak);mid_from_bak=1;return 1;}}
  if(scr==S_ADV_EDIT)derive_mid();
  if(scr==S_RESULT||scr==S_ADV_REVIEW){if(p&PAD_DOWN){sel++;return 1;}if(p&PAD_UP){sel=sel?sel-1:0;return 1;}}
 
