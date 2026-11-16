@@ -122,22 +122,23 @@ static void lc_line(int y,const char *name,long v,int ok,const char *txt,const c
 
 static int lc_op(unsigned op,unsigned char b[4]){unsigned r,v;if(!hookcall(op,&r)||!ramword(P156_RESULT,&v))return 0;
  b[0]=(unsigned char)v;b[1]=(unsigned char)(v>>8);b[2]=(unsigned char)(v>>16);b[3]=(unsigned char)(v>>24);return 1;}
+static void size_log(const char *l);
 static void lc_measure(int type){unsigned char b[4];sceCdRMode m;unsigned t0;int i;char line[160];
  lc_cd=type!=0x14&&type!=0xfe;
  if(type!=0xfd){m.trycount=0;m.spindlctrl=SCECdSpinNom;m.datapattern=SCECdSecS2048;t0=ms();
   if(sceCdRead(16,16,td_buf,&m)){while(ms()-t0<15000&&sceCdSync(1))pause_ms(5);}
   report("LASER read err=%d ms=%u\n",sceCdGetError(),ms()-t0);}
- lc_c17=lc_op(1,b)?b[2]:-1;
+ lc_c17=lc_op(1,b)?b[2]:-1;size_log("LASER_SIZE");
  lc_fe=lc_op(2,b)&&b[0]==1&&b[1]==0?b[2]:-1;
  lc_te=lc_op(3,b)&&b[0]==1&&b[1]==0?b[2]:-1;
  lc_rf=lc_op(4,b)&&b[0]==2&&b[1]==0?(int)b[2]-(int)b[3]:-999;
  for(i=0;i<3;i++)lc_j[i]=lc_op(5,b)&&b[0]==2&&b[1]==0?(unsigned)(b[2]<<8|b[3]):0xffff;
  {unsigned a=lc_j[0],c=lc_j[1],d=lc_j[2],t;if(a>c){t=a;a=c;c=t;}if(c>d){t=c;c=d;d=t;}if(a>c){t=a;a=c;c=t;}lc_j[0]=a;lc_j[1]=c;lc_j[2]=d;}
- snprintf(lc_kind,sizeof lc_kind,"%s",lc_cd?"CD":lc_c17==0x15?"DVD-DL":"DVD-SL");
+ snprintf(lc_kind,sizeof lc_kind,"%s",lc_cd?"CD":p156_c17_dl_code(lc_c17)?"DVD-DL":"DVD-SL");
  lc_fe_ok=lc_fe>=0x08&&lc_fe<=0x60;lc_te_ok=lc_te>=0x10&&lc_te<=0x60;
  lc_rf_ok=lc_cd?(lc_rf>=0x49&&lc_rf<=0x89):(lc_rf>=0x35);
  if(lc_cd){lc_j_ok=1;snprintf(lc_jlim,sizeof lc_jlim,"CD: not judged");}
- else if(lc_c17==0x15){lc_j_ok=lc_j[1]<=0x4c00;snprintf(lc_jlim,sizeof lc_jlim,"DL <= 19456 / 11520 DEX");}
+ else if(p156_c17_dl_code(lc_c17)){lc_j_ok=lc_j[1]<=0x4c00;snprintf(lc_jlim,sizeof lc_jlim,"DL <= 19456 / 11520 DEX");}
  else{lc_j_ok=lc_j[1]<=0x3e00;snprintf(lc_jlim,sizeof lc_jlim,"SL <= 15872 / 10608 DEX");}
  lc_n++;
  snprintf(line,sizeof line,"%s,%02x,%d,%d,%d,%u,%u,%u\n",lc_kind,lc_c17&255,lc_fe,lc_te,lc_rf,lc_j[0],lc_j[1],lc_j[2]);
@@ -153,7 +154,7 @@ static void live_jitter(void){unsigned char b[4];unsigned last_seek=0,i,s,c,lv_p
 
  lv_size=td_buf[80]|(td_buf[81]<<8)|(td_buf[82]<<16)|((unsigned)td_buf[83]<<24);
  if(lv_size<50000||lv_size>4500000)lv_size=lc_cd?300000:2000000;
- lv_lim=lc_cd?0xffff:lc_c17==0x15?0x4c00:0x3e00;lv_n=0;lv_best=0xffffffffu;lv_avg10=0;
+ lv_lim=lc_cd?0xffff:p156_c17_dl_code(lc_c17)?0x4c00:0x3e00;lv_n=0;lv_best=0xffffffffu;lv_avg10=0;
  lv_pause=0;scr=S_LIVE;report("LIVE BEGIN %s size=%u\n",lc_kind,lv_size);flush();lv_seek();last_seek=ms();draw();present();
  for(;;){u32 p=ReadCombinedPadStatus();
   if(p&PAD_CIRCLE){report("LIVE END n=%u best=%u\n",lv_n,lv_best);flush();scr=S_LASER;return;}
@@ -336,16 +337,30 @@ static int adj(unsigned jobop,const char *label){unsigned r=0;
  if(!job(jobop)||!sumfix(label)||!ramword(P156_RESULT,&r)||!p156_adj_ok(r)){report("%s FAIL result=%08x\n",label,r);return 0;}
  report("%s ok class=%u\n",label,(r>>16)&255);return 1;}
 
+static void thr_log(const char *l){unsigned a=0,b=0,c=0,d=0;if(read_word(0x33,&a)&&read_word(0x34,&b)&&read_word(0x35,&c)&&read_word(0x36,&d))report("%s 033=%u 034=%u 035=%u 036=%u\n",l,a,b,c,d);flush();}
+static int cd_boundary(void){unsigned v34=0,v35=0,o33=p142_word(pre,0x33),o36=p142_word(pre,0x36);int m;
+ if(!read_word(0x34,&v34)||!read_word(0x35,&v35))return 0;c97_k=p142_word(pre,0x37)&0x3f;
+ if(c97_gate((int)v34,(int)v35)){m=c97_mid((int)v34,(int)v35);
+  report("BOUNDARY mid 034=%u 035=%u k=%d -> 033=%d 036=%d (before %u/%u)\n",v34,v35,c97_k,m,m-1,o33,o36);
+  if(!write_word(0x33,(unsigned)m)||!write_word(0x36,(unsigned)(m-1)))return 0;}
+ else{report("BOUNDARY gate refuses 034=%u 035=%u (%u) -> 033 back to %u, 036 stays %u\n",v34,v35,v35?v34*10/(v35*3):0,o33,o36);
+  if(!write_word(0x33,o33))return 0;}
+ flush();return sumfix("BOUNDARY");}
+static void size_log(const char *l){unsigned f=0,m=0;
+ if(ramword(P->size_flag&~3u,&f)&&ramword(P->size_meas&~3u,&m))report("%s flag8cm=%u meas=%u\n",l,(f>>(8*(P->size_flag&3)))&255,(m>>(8*(P->size_meas&2)))&0xffff);
+ else report("%s READ_FAIL\n",l);flush();}
+static int c16_12cm(unsigned *ret){size_log("SIZE_BEFORE");if(!pmap(12,"c14_before_c16"))return 0;size_log("SIZE_AFTER_C14");
+ if(!job(0x11)||!pmap(1,"c17")||!ramword(P156_RESULT,ret))return 0;size_log("SIZE_AFTER_C16");return 1;}
 static int elect_disc(const char *kind,int keep){int ok=0,started=0,r,thr=0,forced;unsigned ret=0,t33=0,t34=0;const char *step="start";
  r=wait_disc(kind);if(r<=0)return r;forced=r==2;
  if(!strcmp(kind,"CD")){task_begin(keep?"STEP 3 · CD · WRITES PERMANENTLY":"MEASURE ONLY · CD","Calibrating CD…","ca3 01","0x30..0x47");
   task_row(G_CD,0,"c11 · c22 00 · c44 · c44","CD 12 cm mode, as PMAP");task_row(-1,"97","c97 00 · CD detect adjust","words 0x33, 0x34");
-  task_row(-1,"A3","c10 · ca3 01 · CD auto adjustment","words 0x40..0x47");task_row(G_CHECK,0,"Checksums + readback",NULL);}
+  task_row(-1,"A3","c10 · ca3 01 · CD auto adjustment","words 0x40..0x47, then the 0x33/0x36 boundary");task_row(G_CHECK,0,"Checksums + readback",NULL);}
  else if(!strcmp(kind,"DVD-SL")){task_begin(keep?"STEP 3 · DVD-SL · WRITES PERMANENTLY":"MEASURE ONLY · DVD-SL","Calibrating DVD-SL…","ca5 0105","0x30..0x4F");
-  task_row(G_DVD,0,"c44 · c16 / c17 · c14","expect 01 00 14, DVD-SL mode");task_row(-1,"97","c97 01 · c97 03","DVD detect, then the midpoint");
+  task_row(G_DVD,0,"c44 · c16 / c17 · c14","expect 01 00 14 or 12, DVD-SL mode");task_row(-1,"97","c97 01 · c97 03","DVD detect, then the midpoint");
   task_row(-1,"A5","ca5 0105 · DVD-SL auto adjustment","words 0x48..0x4F");task_row(G_CHECK,0,"Checksums + readback",NULL);}
  else{task_begin(keep?"STEP 3 · DVD-DL · WRITES PERMANENTLY":"MEASURE ONLY · DVD-DL","Calibrating DVD-DL…","ca3 01",rng30);
-  task_row(G_DVD,0,"c44 · c16 / c17 · c15","expect 01 00 15, DVD-DL mode");task_row(-1,"A3","ca3 01 · DVD-DL auto adjustment",rngdl);
+  task_row(G_DVD,0,"c44 · c16 / c17 · c15","expect 01 00 15 or 13, DVD-DL mode");task_row(-1,"A3","ca3 01 · DVD-DL auto adjustment",rngdl);
   task_row(-1,"F2","cf2 · layer 1","gain / jitter checks");task_row(G_CHECK,0,"Checksums + readback",NULL);}
  task_mark(0,1);report("ELECT %s keep=%d BEGIN\n",kind,keep);flush();
  step="stop";if(!callrpc(P142_STOP,NULL,0)||(!forced&&reply.ready!=2))goto out;
@@ -358,19 +373,21 @@ static int elect_disc(const char *kind,int keep){int ok=0,started=0,r,thr=0,forc
   task_mark(1,1);started=1;wrote_any|=keep;step="c97 00";if(!c97(0x17,"C97_00"))goto out;
   if(read_word(0x33,&t33)&&read_word(0x34,&t34)){thr=1;report("C97_00 033=%u 034=%u\n",t33,t34);}
   task_mark(2,1);step="c10";if(!pmap(11,"c10"))goto out;step="ca3 01";if(!adj(0x12,"CA3_CD"))goto out;
-  if(!pmap(2,"CD_FE_cd3_13")||!pmap(3,"CD_TE_cd3_23"))goto out;}
+  if(!pmap(2,"CD_FE_cd3_13")||!pmap(3,"CD_TE_cd3_23"))goto out;
+  step="boundary";if(!cd_boundary())goto out;}
  else if(!strcmp(kind,"DVD-SL")){
   step="c44";if(!pmap(9,"c44"))goto out;
-  step="c16/c17";if(!job(0x11)||!pmap(1,"c17")||!ramword(P156_RESULT,&ret))goto out;
-  if(!p156_c17_is_sl(ret)){step="not a single-layer DVD";goto out;}
+  step="c14 + c16/c17";if(!c16_12cm(&ret))goto out;
+  report("C16_SL c17=%02x %s\n",(ret>>16)&255,p156_c17_is_sl(ret)?"SL":forced?"not SL, refused (forced)":"not SL, logged only (stock type 14)");flush();
+  if(forced&&!p156_c17_is_sl(ret)){step="not a single-layer DVD";goto out;}
   step="c14";if(!pmap(12,"c14"))goto out;
-  task_mark(1,1);started=1;wrote_any|=keep;step="c97 01";if(!c97(0x15,"C97_01"))goto out;step="c97 03";if(!c97(0x16,"C97_03"))goto out;
+  task_mark(1,1);started=1;wrote_any|=keep;step="c97 01";if(!c97(0x15,"C97_01"))goto out;thr_log("C97_01");step="c97 03 (CD/DVD level ratio outside 15..29?)";if(!c97(0x16,"C97_03"))goto out;thr_log("C97_03");
   task_mark(2,1);step="ca5 0105";if(!adj(0x14,"CA5_SL"))goto out;
   if(!pmap(4,"SL_ca7")||!pmap(2,"SL_FE")||!pmap(3,"SL_TE")||!pmap(5,"SL_ce9_a")||!pmap(6,"SL_cd1_d6d8")||!pmap(5,"SL_ce9_b")||!pmap(7,"SL_cd1_d6de"))goto out;}
  else{
   step="c44";if(!pmap(9,"c44"))goto out;
-  step="c16/c17";if(!job(0x11)||!pmap(1,"c17")||!ramword(P156_RESULT,&ret))goto out;
-  if((ret&0x00ffffffu)!=0x00150001u){step="not a dual-layer DVD";goto out;}
+  step="c14 + c16/c17";if(!c16_12cm(&ret))goto out;
+  if(!p156_c17_is_dl(ret)){step="not a dual-layer DVD";goto out;}
   step="c15";if(!pmap(8,"c15"))goto out;
   task_mark(1,1);started=1;wrote_any|=keep;step="ca3 01";if(!adj(0x12,"CA3_DL"))goto out;
   if(!pmap(4,"L0_ca7")||!pmap(2,"L0_FE")||!pmap(3,"L0_TE")||!pmap(5,"L0_ce9_a")||!pmap(6,"L0_cd1_d6d8")||!pmap(5,"L0_ce9_b")||!pmap(7,"L0_cd1_d6de"))goto out;

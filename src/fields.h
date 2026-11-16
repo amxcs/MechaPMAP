@@ -10,7 +10,7 @@ static unsigned fput(const Field *f,unsigned w,int v){
 
 static int kind_word(const char *kind,unsigned w){
  if(w==0x30)return 1;
- if(!strcmp(kind,"CD"))return w==0x33||w==0x34||(w>=0x40&&w<=0x47);
+ if(!strcmp(kind,"CD"))return w==0x33||w==0x34||w==0x36||(w>=0x40&&w<=0x47);
  if(!strcmp(kind,"DVD-SL"))return w==0x33||w==0x35||w==0x36||(w>=0x48&&w<=0x4f);
  return w>=0x50&&w<=(ee_last30<0x59?ee_last30:0x59);}
 static int only_kind_changes(const char *kind,const unsigned char *a,const unsigned char *b){unsigned i;

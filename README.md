@@ -10,7 +10,8 @@ It backs up the NVRAM to USB first and verifies every write.
 | 6.12 | SCPH-90004 | yes |
 | 6.06 | SCPH-75004 | yes |
 | 6.00, 6.02, 6.04 | SCPH-7000x / 7500x | no |
-| 5.00, 5.02, 5.04, 5.06, 5.06 Mexico, 5.12 | SCPH-5000x | no |
+| 5.04 | SCPH-5000x | yes |
+| 5.00, 5.02, 5.06, 5.06 Mexico, 5.12 | SCPH-5000x | no |
 
 Run `MechaPMAP.elf` from a USB stick and keep the backup it writes there.
 

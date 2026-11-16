@@ -7,7 +7,10 @@ static inline int p156_op1_echo_ok(const unsigned char *out,unsigned off,unsigne
 
 static inline int p156_adj_ok(unsigned w0){return (w0&0xffffu)==0x0001u;}
 
-static inline int p156_c17_is_sl(unsigned w0){return (w0&0x00ffffffu)==0x00140001u;}
+static inline int p156_c17_is_sl(unsigned w0){w0&=0x00ffffffu;return w0==0x00140001u||w0==0x00120001u;}
+static inline int p156_c17_is_dl(unsigned w0){w0&=0x00ffffffu;return w0==0x00150001u||w0==0x00130001u;}
+static inline int p156_c17_dl_code(int c){return c==0x15||c==0x13;}
+static inline int p156_c17_sl_code(int c){return c==0x14||c==0x12;}
 
 static inline int p156_type_is_cd(int t){return t>=0x10&&t<=0x13;}
 
